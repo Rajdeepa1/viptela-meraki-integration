@@ -541,62 +541,15 @@ if __name__ == "__main__":
                     else:
                         print("uplink info error")
 
-
-                # writing function to get ISP
-                splist = []
-
-                def sp(primispvar, secispvar):
-                    b_obj = BytesIO()
-                    crl = pycurl.Curl()
-                    # Set URL value
-                    crl.setopt(crl.URL, 'https://ipapi.co/' + primispvar + '/json/')
-                    # Write bytes that are utf-8 encoded
-                    crl.setopt(crl.WRITEDATA, b_obj)
-                    # Perform a file transfer
-                    crl.perform()
-                    # End curl session
-                    crl.close()
-                    # Get the content stored in the BytesIO object (in byte characters)
-                    get_body = b_obj.getvalue()
-                    # Decode the bytes stored in get_body to HTML and print the result
-                    resdict = json.loads(get_body.decode('utf-8'))
-                    isp = resdict['org']
-                    # print(isp)
-                    splist.append(isp)
-                    if secondaryuplinkindicator == 'True':
-                        b_objsec = BytesIO()
-                        crl = pycurl.Curl()
-                        # Set URL value
-                        crl.setopt(crl.URL, 'https://ipapi.co/' +
-                                '76.102.224.16' + '/json/')
-                        # Write bytes that are utf-8 encoded
-                        crl.setopt(crl.WRITEDATA, b_objsec)
-                        # Perform a file transfer
-                        crl.perform()
-                        # End curl session
-                        crl.close()
-                        # Get the content stored in the BytesIO object (in byte characters)
-                        get_bodysec = b_objsec.getvalue()
-                        # Decode the bytes stored in get_body to HTML and print the result
-                        resdictsec = json.loads(get_bodysec.decode('utf-8'))
-                        ispsec = resdictsec['org']
-                        # print(isp)
-                        splist.append(ispsec)
-
-
-                sp(pubs, pubssec)
-                localsp = splist[0]
-                secisp = splist[1]
-
                 # Don't use the same public IP for both links; use a place holder
                 if(pubs == pubssec):
                         pubssec = "1.2.3.4"
 
                 # listing site below in output with branch information
                 if secondaryuplinkindicator == 'True':
-                    branches = str(netname) + "  " + str(pubs) + "  " + str(localsp) + "  " + str(port) + "  " + str(pubssec) + "  " + str(secisp) + "  " + str(wan2port) + "  " + str(privsub)
+                    branches = str(netname) + "  " + str(pubs) + "  " + str(port) + "  " + str(pubssec) + "  " + str(wan2port) + "  " + str(privsub)
                 else:
-                    branches = str(netname) + "  " +  str(pubs) + "  " +  str(localsp) + "  " +  str(port) + "  " +  str(privsub)
+                    branches = str(netname) + "  " +  str(pubs) + "  " +  str(port) + "  " +  str(privsub)
 
                 print(branches)
                 

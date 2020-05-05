@@ -438,37 +438,6 @@ if __name__ == "__main__":
 
         ipsec_parameters = list()
 
-        # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
-        for device in config["vip_devices"]:
-            print("Device: {}".format(device["system_ip"]))
-            source_ip = ipsec_tunnel.get_interface_ip(device["system_ip"],device["vpn0_source_interface"])
-
-            psk = secrets.token_hex(16)
-
-            temp_parameters =  { 
-                                 "device_sys_ip":device["system_ip"],
-                                 "viptela_mx_primary_src_ip": source_ip,
-                                 "viptela_mx_primary_dst_ip": device['mx_dst_ip'],
-                                 "pre_shared_key": psk,
-                                 "ike_cipher_suite":device['ike_cipher_suite'],
-                                 "ike_dh_group":device['ike_dh_group'],
-                                 "ipsec_cipher_suite":device['ipsec_cipher_suite'],
-                                 "ipsec_pfs":device['ipsec_pfs']
-                               }
-
-            ipsec_parameters.append(temp_parameters)
-
-            if logger is not None:
-                logger.info("\nTunnel parameters are " + str(ipsec_parameters))
-
-        device_info = ipsec_tunnel.get_device_templateid(device_template_name)
-            
-        feature_templateids = ipsec_tunnel.get_feature_templates(device_info["device_template_id"])
-
-        ipsec_templateid = ipsec_tunnel.create_ipsec_templates(device_info)
-            
-        ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
-
         # Meraki call to obtain Network information
         tagsnetwork = mdashboard.networks.getOrganizationNetworks(meraki_config['org_id'])
 
@@ -542,70 +511,77 @@ if __name__ == "__main__":
                     else:
                         print("uplink info error")
 
-
-                # writing function to get ISP
-                splist = []
-
-                def sp(primispvar, secispvar):
-                    b_obj = BytesIO()
-                    crl = pycurl.Curl()
-                    # Set URL value
-                    crl.setopt(crl.URL, 'https://ipapi.co/' + primispvar + '/json/')
-                    # Write bytes that are utf-8 encoded
-                    crl.setopt(crl.WRITEDATA, b_obj)
-                    # Perform a file transfer
-                    crl.perform()
-                    # End curl session
-                    crl.close()
-                    # Get the content stored in the BytesIO object (in byte characters)
-                    get_body = b_obj.getvalue()
-                    # Decode the bytes stored in get_body to HTML and print the result
-                    resdict = json.loads(get_body.decode('utf-8'))
-                    isp = resdict['org']
-                    # print(isp)
-                    splist.append(isp)
-                    if secondaryuplinkindicator == 'True':
-                        b_objsec = BytesIO()
-                        crl = pycurl.Curl()
-                        # Set URL value
-                        crl.setopt(crl.URL, 'https://ipapi.co/' +
-                                '76.102.224.16' + '/json/')
-                        # Write bytes that are utf-8 encoded
-                        crl.setopt(crl.WRITEDATA, b_objsec)
-                        # Perform a file transfer
-                        crl.perform()
-                        # End curl session
-                        crl.close()
-                        # Get the content stored in the BytesIO object (in byte characters)
-                        get_bodysec = b_objsec.getvalue()
-                        # Decode the bytes stored in get_body to HTML and print the result
-                        resdictsec = json.loads(get_bodysec.decode('utf-8'))
-                        ispsec = resdictsec['org']
-                        # print(isp)
-                        splist.append(ispsec)
-
-
-                sp(pubs, pubssec)
-                localsp = splist[0]
-                secisp = splist[1]
-
                 # Don't use the same public IP for both links; use a place holder
                 if(pubs == pubssec):
                         pubssec = "1.2.3.4"
 
                 # listing site below in output with branch information
                 if secondaryuplinkindicator == 'True':
-                    branches = str(netname) + "  " + str(pubs) + "  " + str(localsp) + "  " + str(port) + "  " + str(pubssec) + "  " + str(secisp) + "  " + str(wan2port) + "  " + str(privsub)
+                    branches = str(netname) + "  " + str(pubs) + "  " + str(port) + "  " + str(pubssec) + "  " + str(wan2port) + "  " + str(privsub)
                 else:
-                    branches = str(netname) + "  " +  str(pubs) + "  " +  str(localsp) + "  " +  str(port) + "  " +  str(privsub)
+                    branches = str(netname) + "  " +  str(pubs) + "  " +  str(port) + "  " +  str(privsub)
 
                 print(branches)
+        
+        # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
+        for device in config["vip_devices"]:
+            print("Device: {}".format(device["system_ip"]))
+            source_ip = ipsec_tunnel.get_interface_ip(device["system_ip"],device["vpn0_source_interface"])
 
-        # Final Call to Update Meraki VPN config with Parsed Blob from Azure 
-        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
-            meraki_config['org_id'], merakivpns[0]
-        )
-        print(updatemvpn)
+            psk = secrets.token_hex(16)
+
+            temp_parameters =  { 
+                                 "device_sys_ip":device["system_ip"],
+                                 "viptela_mx_primary_src_ip": source_ip,
+                                 "viptela_mx_primary_dst_ip": device['mx_dst_ip'],
+                                 "pre_shared_key": psk,
+                                 "ike_cipher_suite":device['ike_cipher_suite'],
+                                 "ike_dh_group":device['ike_dh_group'],
+                                 "ipsec_cipher_suite":device['ipsec_cipher_suite'],
+                                 "ipsec_pfs":device['ipsec_pfs']
+                               }
+
+            ipsec_parameters.append(temp_parameters)
+
+            if logger is not None:
+                logger.info("\nTunnel parameters are " + str(ipsec_parameters))
+
+        device_info = ipsec_tunnel.get_device_templateid(device_template_name)
+            
+        feature_templateids = ipsec_tunnel.get_feature_templates(device_info["device_template_id"])
+
+        ipsec_templateid = ipsec_tunnel.create_ipsec_templates(device_info)
+            
+        ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
+
+                
+                # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
+                putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'
+                database = putdata1.replace("west", specifictag[0]) # applies specific tag from org overview page to ipsec config
+                updatedata = database.replace('192.0.0.0', ipsec_parameters[0]["viptela_mx_primary_src_ip"])   # change variable to intance 0 IP
+                updatedata1 = updatedata.replace('placeholder' , netname) # replaces placeholder value with dashboard network name
+                addprivsub = updatedata1.replace('0.0.0.0/0', str(vedge_lan_prefix)) # replace with azure private networks
+                addpsk = addprivsub.replace('meraki123', ipsec_parameters[0]["pre_shared_key"]) # replace with pre shared key variable generated above
+                newmerakivpns = merakivpns[0]
+                
+                found = 0
+                for site in merakivpns: # should be new meraki vpns variable
+                    print(type(site))
+                    for namesite in site:
+                        if netname == namesite['name']:
+                            found = 1
+                if found == 0:
+                    print(type(addpsk))
+                    newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
+                print(newmerakivpns)
+
+
+
+        # Final Call to Update Meraki VPN config 
+        #updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
+            #meraki_config['org_id'], merakivpns[0]
+        #)
+        #print(updatemvpn)
 
     except Exception as e:
         print('Exception line number: {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)

@@ -600,7 +600,7 @@ if __name__ == "__main__":
 
                 print(branches)
 
-        # Final Call to Update Meraki VPN config with Parsed Blob from Azure 
+        # Final Call to Update Meraki VPN config 
         updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
             meraki_config['org_id'], merakivpns[0]
         )

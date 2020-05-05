@@ -599,12 +599,34 @@ if __name__ == "__main__":
                     branches = str(netname) + "  " +  str(pubs) + "  " +  str(localsp) + "  " +  str(port) + "  " +  str(privsub)
 
                 print(branches)
+                
+                # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
+                putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'
+                database = putdata1.replace("west", specifictag[0]) # applies specific tag from org overview page to ipsec config
+                updatedata = database.replace('192.0.0.0', ipsec_parameters[0]["viptela_mx_primary_src_ip"])   # change variable to intance 0 IP
+                updatedata1 = updatedata.replace('placeholder' , netname) # replaces placeholder value with dashboard network name
+                addprivsub = updatedata1.replace('0.0.0.0/0', str(vedge_lan_prefix)) # replace with azure private networks
+                addpsk = addprivsub.replace('meraki123', ipsec_parameters[0]["pre_shared_key"]) # replace with pre shared key variable generated above
+                newmerakivpns = merakivpns[0]
+                
+                found = 0
+                for site in merakivpns: # should be new meraki vpns variable
+                    print(type(site))
+                    for namesite in site:
+                        if netname == namesite['name']:
+                            found = 1
+                if found == 0:
+                    print(type(addpsk))
+                    newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
+                print(newmerakivpns)
+
+
 
         # Final Call to Update Meraki VPN config 
-        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
-            meraki_config['org_id'], merakivpns[0]
-        )
-        print(updatemvpn)
+        #updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
+            #meraki_config['org_id'], merakivpns[0]
+        #)
+        #print(updatemvpn)
 
     except Exception as e:
         print('Exception line number: {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)

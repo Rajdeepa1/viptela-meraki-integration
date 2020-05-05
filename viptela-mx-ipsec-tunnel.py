@@ -437,37 +437,6 @@ if __name__ == "__main__":
 
         ipsec_parameters = list()
 
-        # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
-        for device in config["vip_devices"]:
-            print("Device: {}".format(device["system_ip"]))
-            source_ip = ipsec_tunnel.get_interface_ip(device["system_ip"],device["vpn0_source_interface"])
-
-            psk = secrets.token_hex(16)
-
-            temp_parameters =  { 
-                                 "device_sys_ip":device["system_ip"],
-                                 "viptela_mx_primary_src_ip": source_ip,
-                                 "viptela_mx_primary_dst_ip": device['mx_dst_ip'],
-                                 "pre_shared_key": psk,
-                                 "ike_cipher_suite":device['ike_cipher_suite'],
-                                 "ike_dh_group":device['ike_dh_group'],
-                                 "ipsec_cipher_suite":device['ipsec_cipher_suite'],
-                                 "ipsec_pfs":device['ipsec_pfs']
-                               }
-
-            ipsec_parameters.append(temp_parameters)
-
-            if logger is not None:
-                logger.info("\nTunnel parameters are " + str(ipsec_parameters))
-
-        device_info = ipsec_tunnel.get_device_templateid(device_template_name)
-            
-        feature_templateids = ipsec_tunnel.get_feature_templates(device_info["device_template_id"])
-
-        ipsec_templateid = ipsec_tunnel.create_ipsec_templates(device_info)
-            
-        ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
-
         # Meraki call to obtain Network information
         tagsnetwork = mdashboard.networks.getOrganizationNetworks(meraki_config['org_id'])
 
@@ -552,6 +521,38 @@ if __name__ == "__main__":
                     branches = str(netname) + "  " +  str(pubs) + "  " +  str(port) + "  " +  str(privsub)
 
                 print(branches)
+        
+        # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
+        for device in config["vip_devices"]:
+            print("Device: {}".format(device["system_ip"]))
+            source_ip = ipsec_tunnel.get_interface_ip(device["system_ip"],device["vpn0_source_interface"])
+
+            psk = secrets.token_hex(16)
+
+            temp_parameters =  { 
+                                 "device_sys_ip":device["system_ip"],
+                                 "viptela_mx_primary_src_ip": source_ip,
+                                 "viptela_mx_primary_dst_ip": device['mx_dst_ip'],
+                                 "pre_shared_key": psk,
+                                 "ike_cipher_suite":device['ike_cipher_suite'],
+                                 "ike_dh_group":device['ike_dh_group'],
+                                 "ipsec_cipher_suite":device['ipsec_cipher_suite'],
+                                 "ipsec_pfs":device['ipsec_pfs']
+                               }
+
+            ipsec_parameters.append(temp_parameters)
+
+            if logger is not None:
+                logger.info("\nTunnel parameters are " + str(ipsec_parameters))
+
+        device_info = ipsec_tunnel.get_device_templateid(device_template_name)
+            
+        feature_templateids = ipsec_tunnel.get_feature_templates(device_info["device_template_id"])
+
+        ipsec_templateid = ipsec_tunnel.create_ipsec_templates(device_info)
+            
+        ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
+
                 
                 # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
                 putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'

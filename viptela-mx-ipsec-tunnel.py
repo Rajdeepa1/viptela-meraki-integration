@@ -399,6 +399,7 @@ if __name__ == "__main__":
         device_template_name = config["device_template_name"]
         api_key = config["api_key"]
         orgName = config["orgName"]
+        vedge_lan_prefix = config["vedge_lan_prefix"]
 
         '''
         Below is a list of all the necessary Meraki credentials

@@ -10,7 +10,6 @@ from jinja2 import Template
 import secrets
 import meraki
 import pycurl
-import numpy as np
 from io import BytesIO
 from operator import itemgetter
 import re
@@ -399,7 +398,6 @@ if __name__ == "__main__":
         device_template_name = config["device_template_name"]
         api_key = config["api_key"]
         orgName = config["orgName"]
-        vedge_lan_prefix = config["vedge_lan_prefix"]
 
         '''
         Below is a list of all the necessary Meraki credentials
@@ -523,6 +521,8 @@ if __name__ == "__main__":
 
                 print(branches)
         
+        pubs = "172.31.43.179"
+
         # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
         for device in config["vip_devices"]:
             print("Device: {}".format(device["system_ip"]))
@@ -530,10 +530,13 @@ if __name__ == "__main__":
 
             psk = secrets.token_hex(16)
 
+            vedge_lan_prefix = device["vedge_lan_prefix"]
+
             temp_parameters =  { 
                                  "device_sys_ip":device["system_ip"],
                                  "viptela_mx_primary_src_ip": source_ip,
-                                 "viptela_mx_primary_dst_ip": device['mx_dst_ip'],
+                                 #"viptela_mx_primary_dst_ip": device['mx_dst_ip'],
+                                 "viptela_mx_primary_dst_ip": pubs,
                                  "pre_shared_key": psk,
                                  "ike_cipher_suite":device['ike_cipher_suite'],
                                  "ike_dh_group":device['ike_dh_group'],
@@ -555,33 +558,33 @@ if __name__ == "__main__":
         ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
 
                 
-                # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
-                putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'
-                database = putdata1.replace("west", specifictag[0]) # applies specific tag from org overview page to ipsec config
-                updatedata = database.replace('192.0.0.0', ipsec_parameters[0]["viptela_mx_primary_src_ip"])   # change variable to intance 0 IP
-                updatedata1 = updatedata.replace('placeholder' , netname) # replaces placeholder value with dashboard network name
-                addprivsub = updatedata1.replace('0.0.0.0/0', str(vedge_lan_prefix)) # replace with azure private networks
-                addpsk = addprivsub.replace('meraki123', ipsec_parameters[0]["pre_shared_key"]) # replace with pre shared key variable generated above
-                newmerakivpns = merakivpns[0]
-                
-                found = 0
-                for site in merakivpns: # should be new meraki vpns variable
-                    print(type(site))
-                    for namesite in site:
-                        if netname == namesite['name']:
-                            found = 1
-                if found == 0:
-                    print(type(addpsk))
-                    newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
-                print(newmerakivpns)
+        # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
+        specifictag = re.findall(r'[v]+[i]+[p]+[t]+[e]+[l]+[a]+[-]+[0-999]', str(nettag))
+        print(specifictag)
+        putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'
+        database = putdata1.replace("west", specifictag[0]) # applies specific tag from org overview page to ipsec config
+        updatedata = database.replace('192.0.0.0', ipsec_parameters[0]["viptela_mx_primary_src_ip"])   # change variable to intance 0 IP
+        updatedata1 = updatedata.replace('placeholder' , netname) # replaces placeholder value with dashboard network name
+        addprivsub = updatedata1.replace('0.0.0.0/0', str(vedge_lan_prefix)) # replace with azure private networks
+        addpsk = addprivsub.replace('meraki123', ipsec_parameters[0]["pre_shared_key"]) # replace with pre shared key variable generated above
+        newmerakivpns = merakivpns[0]
+        
+        found = 0
+        for site in merakivpns: # should be new meraki vpns variable
+            print(type(site))
+            for namesite in site:
+                if netname == namesite['name']:
+                    found = 1
+        if found == 0:
+            print(type(addpsk))
+            newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
+        print(newmerakivpns)
 
 
 
         # Final Call to Update Meraki VPN config 
-        #updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
-            #meraki_config['org_id'], merakivpns[0]
-        #)
-        #print(updatemvpn)
+        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(meraki_config['org_id'], merakivpns[0])
+        print(updatemvpn)
 
     except Exception as e:
         print('Exception line number: {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)

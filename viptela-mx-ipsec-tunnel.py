@@ -705,7 +705,7 @@ if __name__ == "__main__":
 
         # loop that iterates through the variable tagsnetwork and matches networks with vWAN in the tag
         for i in tagsnetwork:
-            if i['tags'] is None:
+            if i['tags'] is None or i['name'] == 'Tag-Placeholder':
                 pass
             elif "viptela-" in i['tags']:
                 network_info = i['id'] # need network ID in order to obtain device/serial information
@@ -852,11 +852,18 @@ if __name__ == "__main__":
             print(type(addpsk))
             newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
         print(newmerakivpns)
+        
+        # updating preshared key for primary VPN tunnel
+
+        for vpnpeers in newmerakivpns: # iterates through the list of VPNs from the original call
+            if vpnpeers['name'] == netname: # matches against network name that is meraki network name variable
+                if vpnpeers['secret'] != ipsec_parameters[0]["pre_shared_key"]: # if statement for if password in VPN doesnt match psk variable
+                    vpnpeers['secret'] = ipsec_parameters[0]["pre_shared_key"] # updates the pre shared key for the vpn dictionary
 
 
 
         # Final Call to Update Meraki VPN config 
-        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(meraki_config['org_id'], merakivpns[0])
+        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(meraki_config['org_id'], newmerakivpns)
         print(updatemvpn)
 
     except Exception as e:

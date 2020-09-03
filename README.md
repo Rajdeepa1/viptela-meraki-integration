@@ -3,7 +3,8 @@
 This toolkit enables Meraki and Umbrella customers to streamline always on connectivity from a Cisco Meraki Branch site to Cisco Viptela Vedge. Extending secure and automated connectivity to between Cisco Meraki Branch sites and Vedge Hubs.
 
 # Architecture
-image
+
+![Test Image 1](viptela_meraki_architecture.png)
 
 1) Obtain Cisco Meraki API Key and Org Name
 

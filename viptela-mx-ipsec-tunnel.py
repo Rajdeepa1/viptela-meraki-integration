@@ -8,6 +8,7 @@ from logging.handlers import TimedRotatingFileHandler
 import yaml
 from jinja2 import Template
 import secrets
+import ipaddress
 import meraki
 import pycurl
 from io import BytesIO
@@ -15,6 +16,10 @@ from operator import itemgetter
 import re
 import urllib.request
 from datetime import datetime, timedelta
+import requests, json, time
+import meraki
+import re
+import ast
 
 
 requests.packages.urllib3.disable_warnings()
@@ -35,9 +40,9 @@ def get_logger(logfile, level):
         if not os.path.exists(fldr):
             os.makedirs(fldr)
 
-        logger = logging.getLogger()
+        logger = logging.getLogger('viptela-mx-ipsec-tunnel')
         logger.setLevel(level)
- 
+
         log_format = '%(asctime)s | %(levelname)-8s | %(funcName)-20s | %(lineno)-3d | %(message)s'
         formatter = logging.Formatter(log_format)
  
@@ -56,6 +61,99 @@ def get_logger(logfile, level):
         return logger
 
     return None
+
+
+
+
+# class that contains all Meraki necessary config
+class MerakiConfig:
+    api_key = 'b7338fdc5024d9a1cfe649ca23b659ae9f706c0f'
+    org_name = 'Cloud Test Org'
+    tag_prefix = 'viptela-11'
+    org_id = None
+
+# function to parse list of tags for an individual network
+def strip_meraki_network_tags(meraki_network_tag):
+    # below parses the for the specific network tag on the network w/ viptela-
+    meraki_tag_strip_part1 = re.findall(r'[v]+[i]+[p]+[t]+[e]+[l]+[a]+[-].*',\
+         str(meraki_network_tag))
+    return meraki_tag_strip_part1[0]
+
+# writing function to obtain org ID via linking ORG name
+mdashboard = meraki.DashboardAPI(MerakiConfig.api_key)
+result_org_id = mdashboard.organizations.getOrganizations()
+for x in result_org_id:
+    if x['name'] == MerakiConfig.org_name:
+        MerakiConfig.org_id = x['id']
+
+# defining function that creates dictionary of IPsec config
+def get_meraki_ipsec_config(name, public_ip, lan_subnets, secret, network_tags) -> dict:
+    ipsec_config = {
+        "name": name,
+        "publicIp": public_ip,
+        "privateSubnets": [lan_subnets],
+        "secret": secret,
+        "ikeVersion": "1",
+        "ipsecPolicies": {
+            "ikeCipherAlgo": ["aes256"],
+            "ikeAuthAlgo": ["sha1"],
+            "ikeDiffieHellmanGroup": ["group2"],
+            "ikeLifetime": 28800,
+            "childCipherAlgo": ["aes256"],
+            "childAuthAlgo": ["sha1"],
+            "childPfsGroup": ["group2"],
+            "childLifetime": 3600
+        },
+        "networkTags": [ network_tags ]
+    }
+
+    return ipsec_config
+
+# function to update Meraki VPN config
+def update_meraki_vpn(vpn_list):
+    updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(
+    MerakiConfig.org_id, vpn_list
+    )
+
+# function to validate that MX is on version 15 or greater
+def validate_mx_firmware(branch_node):
+    # call to get device info
+    devices = mdashboard.devices.getNetworkDevices(branch_node)
+    print(devices)
+    # validating firmware to ensure device is on 15
+    firmwareversion = devices[0]['firmware'] 
+    # validation to say True False if MX appliance is on 15 firmware
+    firmwarecompliance = str(firmwareversion).startswith("wired-15") 
+    if firmwarecompliance == True:
+        print("firmware is compliant")
+    else:
+        print("firmware is not compliant breaking loop")
+        firmwarecompliance = False
+
+    return firmwarecompliance
+
+# this function performs initial get to obtain all Meraki existing VPN info 
+def get_meraki_ipsec_tunnels():
+    originalvpn = mdashboard.organizations.getOrganizationThirdPartyVPNPeers(
+        MerakiConfig.org_id
+        )  
+    return originalvpn     
+
+# this function performs an org wide Meraki call to obtain VPN info for all networks in an org
+def org_wide_vpn_status():
+    # defining the URL for the GET below
+    org_vpn_url = 'https://api.meraki.com/api/v1/organizations/'\
+        +MerakiConfig.org_id+'/appliance/vpn/statuses'
+    # creating the header in order to authenticate the call
+    header = {"X-Cisco-Meraki-API-Key": MerakiConfig.api_key, "Content-Type": "application/json"}
+    # performing API call to meraki dashboard
+    vpn_statuses = requests.get(org_vpn_url, headers=header).content
+    # vpn_status is a data type of bytes, going to convert to a string then adictionary
+    decoded_vpn_statuses = vpn_statuses[1:-1].decode("UTF-8") # parsing outer brackets
+    # converting string to dictionary
+    meraki_vpn_peers = ast.literal_eval(decoded_vpn_statuses)
+    
+    return meraki_vpn_peers
 
 
 def get_device_ids(jsessionid,token,template_id):
@@ -177,8 +275,17 @@ class create_ipsec_tunnel:
             try:
                 data = response.json()["data"][0]
                 ip_address = data["ip-address"].split("/")[0]
+
+                while(1):
+
+                    if ipaddress.ip_address(ip_address).is_private:
+                        print("\nSource interface ip address is %s so seems device is behind NAT!!\n"%ip_address)
+                        ip_address = input("Please enter NAT Public IP address :")                        
+                    else:
+                        break
+
                 if logger is not None:
-                    logger.info("\nsource ip address for tunnels is " + str(ip_address))
+                    logger.info("\nSource ip address for tunnels is " + str(ip_address))
                 return ip_address
             except Exception as e:
                 if logger is not None:
@@ -402,7 +509,7 @@ class create_ipsec_tunnel:
                     temp_pri_ipsec_id = item2["pri_ipsec_id"] # to use ipsec interface id in service vpn template  update
                     item1["/0/viptela_mx_ipsec_interface_1/interface/if-name"] = item2["pri_ipsec_id"]
                     item1["/0/viptela_mx_ipsec_interface_1/interface/ip/address"] = item2["pri_ipsec_ip"]
-                    item1["/0/viptela_mx_ipsec_interface_1/interface/tunnel-source"] = item2["viptela_mx_primary_src_ip"]
+                    item1["/0/viptela_mx_ipsec_interface_1/interface/tunnel-source-interface"] = item2["vpn0_source_interface"]
                     item1["/0/viptela_mx_ipsec_interface_1/interface/tunnel-destination"] = item2["viptela_mx_primary_dst_ip"]
                     item1["/0/viptela_mx_ipsec_interface_1/interface/ike/authentication-type/pre-shared-key/pre-shared-secret"] = item2["pre_shared_key"]
                     item1["/0/viptela_mx_ipsec_interface_1/interface/ike/ike-ciphersuite"] = item2["ike_cipher_suite"]
@@ -473,9 +580,11 @@ class create_ipsec_tunnel:
                 print("\nFetching template push status failed")
                 exit()
 
+
         # Update service VPN template with IPsec route
 
-        print("\nService VPN Templates list", service_vpn_templates)
+        if logger is not None:
+            logger.info("\nService VPN Templates list" + str(service_vpn_templates))
 
         for item in service_vpn_templates:
             
@@ -649,7 +758,7 @@ if __name__ == "__main__":
         logger = get_logger("log/viptela_mx_logs.txt", log_level)
         if logger is not None:
             logger.info("Loading configuration details from YAML\n")
-            print("Loading configuration details from YAML\n")
+        print("Loading configuration details from YAML\n")
         with open("config_details.yaml") as f:
             config = yaml.safe_load(f.read())
         
@@ -660,39 +769,13 @@ if __name__ == "__main__":
         device_template_name = config["device_template_name"]
         api_key = config["api_key"]
         orgName = config["orgName"]
-        service_vpn_ipsec_route = config.get("service_vpn_ipsec_route","0.0.0.0/0")
 
 
         '''
         Below is a list of all the necessary Meraki credentials
         '''
 
-        # Meraki credentials are placed below
-        meraki_config = {
-            'api_key': api_key,
-            'orgName': orgName
-        }
 
-        # writing function to obtain org ID via linking ORG name
-        mdashboard = meraki.DashboardAPI(meraki_config['api_key'])
-        result_org_id = mdashboard.organizations.getOrganizations()
-        for x in result_org_id:
-            if x['name'] == meraki_config['orgName']:
-                meraki_config['org_id'] = x['id']
-
-        # branch subnets is a variable to display local branch site info
-        branchsubnets = []
-        # variable with new and existing s2s VPN config
-        merakivpns = []
-
-        # performing initial get to obtain all Meraki existing VPN info to add to merakivpns list above
-        originalvpn = mdashboard.organizations.getOrganizationThirdPartyVPNPeers(
-            meraki_config['org_id']
-        )
-        merakivpns.append(originalvpn)
-
-
-        
         Auth = Authentication()
         jsessionid = Auth.get_jsessionid(vmanage_host,vmanage_port,vmanage_username,vmanage_password)
         token = Auth.get_token(vmanage_host,vmanage_port,jsessionid)
@@ -700,92 +783,54 @@ if __name__ == "__main__":
 
         ipsec_parameters = list()
 
+        # variable with new and existing s2s VPN config for Meraki
+        merakivpns = []
+
+        # performing initial get to obtain all Meraki existing VPN info 
+        original_meraki_tunnels = get_meraki_ipsec_tunnels()
+
+        # executing function to get all existing site/vpn info
+        meraki_config_dump = org_wide_vpn_status()
+
         # Meraki call to obtain Network information
-        tagsnetwork = mdashboard.networks.getOrganizationNetworks(meraki_config['org_id'])
+        tagsnetwork = mdashboard.networks.getOrganizationNetworks(MerakiConfig.org_id)
 
         # loop that iterates through the variable tagsnetwork and matches networks with vWAN in the tag
         for i in tagsnetwork:
-            if i['tags'] is None or i['name'] == 'Tag-Placeholder':
+            if i['tags'] is None:
                 pass
             elif "viptela-" in i['tags']:
                 network_info = i['id'] # need network ID in order to obtain device/serial information
                 netname = i['name'] # network name used to label Meraki VPN and Azure config
                 nettag = i['tags']  # obtaining all tags for network as this might be used for failover
-                va = mdashboard.networks.getNetworkSiteToSiteVpn(network_info) # gets branch local vpn subnets
-                testextract = ([x['localSubnet'] for x in va['subnets']
-                                if x['useVpn'] == True])  # list comprehension to filter for subnets in vpn
-                (testextract)
-                privsub = str(testextract)[1:-1] # needed to parse brackets
-                devices = mdashboard.devices.getNetworkDevices(network_info)
-                x = devices[0]
-                up = x['serial'] # serial number to later obtain the uplink information for the appliance
-                firmwareversion = x['firmware'] # now we obtained the firmware version, need to still add the validation portion
-                firmwarecompliance = str(firmwareversion).startswith("wired-15") # validation to say True False if appliance is on 15 firmware
-                if firmwarecompliance == True:
-                    print("firmware is compliant, continuing")
-                else:
-                    break # if box isnt firmware compliant we break from the loop
-                modelnumber = x['model']
 
-                uplinks = mdashboard.devices.getNetworkDeviceUplink(network_info, up) # obtains uplink information for branch
+                # obtaining lan subnets by iterating through meraki_config_dump variable
+                for meraki_networks in meraki_config_dump:
+                    # conditional statement matches on network ID
+                    if network_info == meraki_networks['networkId']:
+                        # variable representing all MX branch site subnets
+                        mx_branch_subnets = meraki_networks['exportedSubnets'][0]['subnet']
+                        # variable containing list of both public IPs
+                        mx_wan_links = meraki_networks['uplinks']
 
-                # creating keys for dictionaries inside dictionaries
-                uplinks_info = dict.fromkeys(['WAN1', 'WAN2', 'Cellular'])
-                uplinks_info['WAN1'] = dict.fromkeys(
-                    ['interface', 'status', 'ip', 'gateway', 'publicIp', 'dns', 'usingStaticIp'])
-                uplinks_info['WAN2'] = dict.fromkeys(
-                    ['interface', 'status', 'ip', 'gateway', 'publicIp', 'dns', 'usingStaticIp'])
-                uplinks_info['Cellular'] = dict.fromkeys(
-                    ['interface', 'status', 'ip', 'provider', 'publicIp', 'model', 'connectionType'])
+                # calling function to parse tags for SIG specific tag
+                meraki_net_tag = strip_meraki_network_tags(nettag)
 
-                for uplink in uplinks:
-                    if uplink['interface'] == 'WAN 1':
-                        for key in uplink.keys():
-                            uplinks_info['WAN1'][key] = uplink[key]
-                    elif uplink['interface'] == 'WAN 2':
-                        for key in uplink.keys():
-                            uplinks_info['WAN2'][key] = uplink[key]
-                    elif uplink['interface'] == 'Cellular':
-                        for key in uplink.keys():
-                            uplinks_info['Cellular'][key] = uplink[key]
+                # calling function to build dictionary of meraki vpn config
+                primary_meraki_remote_config = get_meraki_ipsec_config(netname, "viptela_public_ip", \
+                    "viptela_lan_subnets", "secret", meraki_net_tag)
 
-                uplinksetting = mdashboard.uplink_settings.getNetworkUplinkSettings(network_info) # obtains meraki sd wan traffic shaping uplink settings
-                for g in uplinks_info:
-                    # loops through the variable uplinks_info which reveals the value for each uplink key
-                    if uplinks_info['WAN2']['status'] == "Active" or uplinks_info['WAN2']['status'] == "Ready" and uplinks_info['WAN1']['status'] == "Active" or uplinks_info['WAN1']['status'] == "Ready":
-                        print("both uplinks active")
+                # building list of dictionaries with Meraki local site config
+                mx_branch_config_dictionary =  {
+                                                    "mx_branch_subnets" : str(mx_branch_subnets),
+                                                    "public-ip": mx_wan_links[0]['publicIp'],
+                                                    "meraki_net_tag": meraki_net_tag,
+                                                    "network_name": netname
 
-                        pubs = uplinks_info['WAN2']['publicIp']
-                        pubssec = uplinks_info['WAN1']['publicIp']
-                        secondaryuplinkindicator = 'True'
+                                               }
+                #print(mx_branch_config_dictionary)
 
-                        port = (uplinksetting['bandwidthLimits']['wan1']['limitDown'])/1000
-                        wan2port = (uplinksetting['bandwidthLimits']['wan2']['limitDown'])/1000
-
-                    elif uplinks_info['WAN2']['status'] == "Active":
-                        pubs = uplinks_info['WAN2']['publicIp']
-                        port = (uplinksetting['bandwidthLimits']['wan2']['limitDown'])/1000
-
-                    elif uplinks_info['WAN1']['status'] == "Active":
-                        pubs = uplinks_info['WAN1']['publicIp']
-                        port = (uplinksetting['bandwidthLimits']['wan1']['limitDown'])/1000
-
-                    else:
-                        print("uplink info error")
-
-                # Don't use the same public IP for both links; use a place holder
-                if(pubs == pubssec):
-                        pubssec = "1.2.3.4"
-
-                # listing site below in output with branch information
-                if secondaryuplinkindicator == 'True':
-                    branches = str(netname) + "  " + str(pubs) + "  " + str(port) + "  " + str(pubssec) + "  " + str(wan2port) + "  " + str(privsub)
-                else:
-                    branches = str(netname) + "  " +  str(pubs) + "  " +  str(port) + "  " +  str(privsub)
-
-                print(branches)
-        
-        pubs = "172.31.43.179"
+        service_vpn_ipsec_route = mx_branch_config_dictionary.get("mx_branch_subnets","0.0.0.0/0")
 
         # Loop over edge routers to create and deploy ipsec tunnel to viptela_mx vpn endpoint
         for device in config["vip_devices"]:
@@ -804,9 +849,8 @@ if __name__ == "__main__":
                                  "device_sys_ip":device["system_ip"],
                                  "pri_ipsec_id": pri_ipsec_id,
                                  "pri_ipsec_ip": pri_ipsec_ip,
-                                 "viptela_mx_primary_src_ip": source_ip,
-                                 #"viptela_mx_primary_dst_ip": device['mx_dst_ip'],
-                                 "viptela_mx_primary_dst_ip": pubs,
+                                 "vpn0_source_interface": device["vpn0_source_interface"],
+                                 "viptela_mx_primary_dst_ip": mx_branch_config_dictionary['public-ip'],
                                  "pre_shared_key": psk,
                                  "ike_cipher_suite":device['ike_cipher_suite'],
                                  "ike_dh_group":device['ike_dh_group'],
@@ -830,41 +874,27 @@ if __name__ == "__main__":
             
         ipsec_tunnel.push_device_template(device_info,ipsec_templateid,ipsec_parameters,feature_templateids)
 
-                
-        # sample IPsec template config that is later replaced with corresponding Viptela site variables (PSK pub IP, lan IP etc)
-        specifictag = re.findall(r'[v]+[i]+[p]+[t]+[e]+[l]+[a]+[-]+[0-999]', str(nettag))
-        print(specifictag)
-        putdata1 = '{"name":"placeholder","publicIp":"192.0.0.0","privateSubnets":["0.0.0.0/0"],"secret":"meraki123", "ipsecPolicies":{"ikeCipherAlgo":["aes256"],"ikeAuthAlgo":["sha1"],"ikeDiffieHellmanGroup":["group2"],"ikeLifetime":28800,"childCipherAlgo":["aes256"],"childAuthAlgo":["sha1"],"childPfsGroup":["group2"],"childLifetime":3600},"networkTags":["west"]}'
-        database = putdata1.replace("west", specifictag[0]) # applies specific tag from org overview page to ipsec config
-        updatedata = database.replace('192.0.0.0', ipsec_parameters[0]["viptela_mx_primary_src_ip"])   # change variable to intance 0 IP
-        updatedata1 = updatedata.replace('placeholder' , netname) # replaces placeholder value with dashboard network name
-        addprivsub = updatedata1.replace('0.0.0.0/0', str(vedge_lan_prefix)) # replace with azure private networks
-        addpsk = addprivsub.replace('meraki123', ipsec_parameters[0]["pre_shared_key"]) # replace with pre shared key variable generated above
-        newmerakivpns = merakivpns[0]
+        vpn_list = original_meraki_tunnels
         
+        ipsec_vpn = get_meraki_ipsec_config( mx_branch_config_dictionary['network_name'], 
+                                             ipsec_parameters[0]['viptela_mx_primary_src_ip'], 
+                                             str(vedge_lan_prefix), 
+                                             psk, 
+                                             mx_branch_config_dictionary['meraki_net_tag'] )
+
         found = 0
-        for site in merakivpns: # should be new meraki vpns variable
-            print(type(site))
-            for namesite in site:
-                if netname == namesite['name']:
+        for site in original_meraki_tunnels: # should be new meraki vpns variable
+            for item in site:
+                if mx_branch_config_dictionary['network_name'] == site.get('name'):
                     found = 1
+    
         if found == 0:
-            print(type(addpsk))
-            newmerakivpns.append(json.loads(addpsk)) # appending new vpn config with original vpn config
-        print(newmerakivpns)
-        
-        # updating preshared key for primary VPN tunnel
-
-        for vpnpeers in newmerakivpns: # iterates through the list of VPNs from the original call
-            if vpnpeers['name'] == netname: # matches against network name that is meraki network name variable
-                if vpnpeers['secret'] != ipsec_parameters[0]["pre_shared_key"]: # if statement for if password in VPN doesnt match psk variable
-                    vpnpeers['secret'] = ipsec_parameters[0]["pre_shared_key"] # updates the pre shared key for the vpn dictionary
-
-
+            vpn_list.append(ipsec_vpn) # appending new vpn config with original vpn config
+        print(vpn_list)
 
         # Final Call to Update Meraki VPN config 
-        updatemvpn = mdashboard.organizations.updateOrganizationThirdPartyVPNPeers(meraki_config['org_id'], newmerakivpns)
-        print(updatemvpn)
+        update_vpn_response = update_meraki_vpn(vpn_list)
+        print(update_vpn_response)
 
     except Exception as e:
         print('Exception line number: {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)

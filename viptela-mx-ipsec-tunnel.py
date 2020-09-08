@@ -10,14 +10,6 @@ from jinja2 import Template
 import secrets
 import ipaddress
 import meraki
-import pycurl
-from io import BytesIO
-from operator import itemgetter
-import re
-import urllib.request
-from datetime import datetime, timedelta
-import requests, json, time
-import meraki
 import re
 import ast
 

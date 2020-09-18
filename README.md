@@ -2,7 +2,7 @@
 
 # Objective 
 
-*   How to use vManage REST APIs to configure IPsec tunnel from vEdge router to Meraki MX routers. 
+*   How to use vManage APIs to configure IPsec tunnel from vEdge router to Meraki MX routers. 
 *   How to use Meraki APIs to create VPN endpoint configuration on  MX router.
 
 # Requirements
@@ -18,7 +18,7 @@ To use this code you will need:
 - Clone the code to local machine.
 
 ```
-https://github.com/suchandanreddy/viptela-meraki-integration.git
+git clone https://github.com/suchandanreddy/viptela-meraki-integration.git
 cd viptela-meraki-integration
 ```
 - Setup Python Virtual Environment (requires Python 3.7+)
@@ -31,9 +31,9 @@ pip3 install -r requirements.txt
 
 # Architecture
 
-![Test Image 1](viptela_meraki_architecture.png)
+![](viptela_meraki_architecture.png)
 
-1) Obtain Cisco Meraki API Key and Org Name
+- Obtain Cisco Meraki API Key and Org Name
 
     a) The API Key and Org Name will be needed for the script to configure your Meraki device. 
 
@@ -101,7 +101,7 @@ After setting the env variables, run the python script `viptela-mx-ipsec-tunnel.
 - Push the updated template to all the devices attached to the Device template.
 - In the end, IPsec tunnel would be configured between vEdge and Meraki router and Service side IPsec routes are added to use the IPsec tunnel for LAN side traffic between vEdge and Meraki routers
 
-# Cisco Meraki Workflow 
+### Cisco Meraki Workflow 
 
 Initially, there will be no tagged Meraki networks so the script will sleep and perform the same GET to obtain any networks with the relevant tag. In order to deploy a new branch, the user would navigate to Organization > Overview and select the checkbox next to the network that you wish to connect. 
 

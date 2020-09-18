@@ -8,7 +8,6 @@ from logging.handlers import TimedRotatingFileHandler
 import yaml
 from jinja2 import Template
 import secrets
-import ipaddress
 import meraki
 import re
 import ast
@@ -69,7 +68,7 @@ def strip_meraki_network_tags(meraki_network_tag):
     # below parses the for the specific network tag on the network w/ viptela-
     meraki_tag_strip_part1 = re.findall(r'[v]+[i]+[p]+[t]+[e]+[l]+[a]+[-].*',\
          str(meraki_network_tag))
-    return meraki_tag_strip_part1[0]
+    return str(meraki_tag_strip_part1[0]).rstrip()
 
 # writing function to obtain org ID via linking ORG name
 mdashboard = meraki.DashboardAPI(MerakiConfig.api_key)
@@ -85,7 +84,7 @@ def get_meraki_ipsec_config(name, public_ip, lan_subnets, secret, network_tags) 
         "publicIp": public_ip,
         "privateSubnets": [lan_subnets],
         "secret": secret,
-        "ikeVersion": "1",
+        "ikeVersion": "2",
         "ipsecPolicies": {
             "ikeCipherAlgo": ["aes256"],
             "ikeAuthAlgo": ["sha1"],
@@ -267,7 +266,8 @@ class create_ipsec_tunnel:
             try:
                 data = response.json()["data"][0]
                 ip_address = data["ip-address"].split("/")[0]
-
+                
+                '''
                 while(1):
 
                     if ipaddress.ip_address(ip_address).is_private:
@@ -275,6 +275,7 @@ class create_ipsec_tunnel:
                         ip_address = input("Please enter NAT Public IP address :")                        
                     else:
                         break
+                '''
 
                 if logger is not None:
                     logger.info("\nSource ip address for tunnels is " + str(ip_address))
@@ -361,7 +362,7 @@ class create_ipsec_tunnel:
             tunnel_data["device_type"] = device_info["device_type"]
             tunnel_data["viptela_mx_ipsec_if_name"] = "viptela_mx_ipsec_interface_1"
             tunnel_data["viptela_mx_ipsec_if_ipv4_address"] = "viptela_mx_ipsec_ipv4_add_1"
-            tunnel_data["viptela_mx_ipsec_if_tunnel_source_ip"]   = "viptela_mx_ipsec_src_1"
+            tunnel_data["viptela_mx_ipsec_if_tunnel_source_interface"] = "viptela_ipsec_source_int_1"
             tunnel_data["viptela_mx_ipsec_if_tunnel_destination"] = "viptela_mx_ipsec_dst_1"
             tunnel_data["viptela_mx_ipsec_if_pre_shared_secret"] = "viptela_mx_ipsec_psk_1"
             tunnel_data["ike_cipher_suite"] = 'ike_cipher_suite'
@@ -820,7 +821,7 @@ if __name__ == "__main__":
                                                     "network_name": netname
 
                                                }
-                #print(mx_branch_config_dictionary)
+                print(mx_branch_config_dictionary)
 
         service_vpn_ipsec_route = mx_branch_config_dictionary.get("mx_branch_subnets","0.0.0.0/0")
 
@@ -842,6 +843,7 @@ if __name__ == "__main__":
                                  "pri_ipsec_id": pri_ipsec_id,
                                  "pri_ipsec_ip": pri_ipsec_ip,
                                  "vpn0_source_interface": device["vpn0_source_interface"],
+                                 "viptela_mx_primary_src_ip": source_ip,
                                  "viptela_mx_primary_dst_ip": mx_branch_config_dictionary['public-ip'],
                                  "pre_shared_key": psk,
                                  "ike_cipher_suite":device['ike_cipher_suite'],
@@ -871,7 +873,7 @@ if __name__ == "__main__":
         ipsec_vpn = get_meraki_ipsec_config( mx_branch_config_dictionary['network_name'], 
                                              ipsec_parameters[0]['viptela_mx_primary_src_ip'], 
                                              str(vedge_lan_prefix), 
-                                             psk, 
+                                             str(psk), 
                                              mx_branch_config_dictionary['meraki_net_tag'] )
 
         found = 0

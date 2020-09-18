@@ -32,11 +32,11 @@
       "vipValue": "false",
       "vipVariableName": "vpn_if_shutdown"
     },
-    "tunnel-source": {
+    "tunnel-source-interface": {
       "vipObjectType": "object",
       "vipType": "variableName",
       "vipValue": "",
-      "vipVariableName": "{{config.viptela_mx_ipsec_if_tunnel_source_ip}}"
+      "vipVariableName": "{{config.viptela_mx_ipsec_if_tunnel_source_interface}}"
     },
     "tunnel-destination": {
       "vipObjectType": "object",
@@ -70,14 +70,9 @@
     "ike": {
       "ike-version": {
         "vipObjectType": "object",
-        "vipType": "ignore",
-        "vipValue": 1
-      },
-      "ike-mode": {
-        "vipObjectType": "object",
-        "vipType": "ignore",
-        "vipValue": "main",
-        "vipVariableName": "vpn_if_ike_mode"
+        "vipType": "constant",
+        "vipValue": 2,
+        "vipVariableName": "vpn_if_ike_version"
       },
       "ike-rekey-interval": {
         "vipObjectType": "object",

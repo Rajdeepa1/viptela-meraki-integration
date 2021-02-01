@@ -58,8 +58,10 @@ def get_logger(logfile, level):
 
 # class that contains all Meraki necessary config
 class MerakiConfig:
-    api_key = 'b7338fdc5024d9a1cfe649ca23b659ae9f706c0f'
-    org_name = 'Cloud Test Org'
+    with open("config_details.yaml") as f:
+        config = yaml.safe_load(f.read())
+    api_key = config["api_key"]
+    orgName = config["orgName"]
     tag_prefix = 'viptela-11'
     org_id = None
 
@@ -760,8 +762,6 @@ if __name__ == "__main__":
         vmanage_username = config["vmanage_username"]
         vmanage_password = config["vmanage_password"]
         device_template_name = config["device_template_name"]
-        api_key = config["api_key"]
-        orgName = config["orgName"]
 
 
         '''
